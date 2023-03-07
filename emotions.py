@@ -1,60 +1,36 @@
-import requests
-import json
+import anki_vector
+from anki_vector import events, behavior, lights
 import random
+from datetime import datetime
+import time
 
-from config import API_KEY, API_URL, DEFAULT_EMOTION
-
-
-class EmotionDetector:
-    """
-    A class that detects emotion using the Microsoft Azure Emotion API
-    """
-
-    def __init__(self):
-        self.headers = {'Content-Type': 'application/octet-stream',
-                        'Ocp-Apim-Subscription-Key': API_KEY}
-
-    def detect_emotion(self, image=None):
-        """
-        A method that detects emotion using a given image or the default image
-        """
-        if image is None:
-            image = open("default_image.jpg", "rb").read()
-
-        response = requests.post(API_URL, headers=self.headers, data=image)
-        data = json.loads(response.text)
-
-        if data:
-            try:
-                scores = data[0]["faceAttributes"]["emotion"]
-                emotion = max(scores, key=scores.get)
-                return emotion
-            except:
-                pass
-
-        return DEFAULT_EMOTION
+from emotion_engine import EmotionDetector, EmotionReaction
+from config import VECTOR_NAME, VECTOR_BEHAVIOR_PATH, EYE_COLORS, DEFAULT_EYE_COLOR, \
+    CUBE_LIGHT_COLORS, DEFAULT_CUBE_LIGHT_COLOR
 
 
-class EmotionReaction:
-    """
-    A class that defines the emotion reactions of Vector
-    """
+def main():
+    with anki_vector.Robot(name=VECTOR_NAME) as robot:
+        robot.behavior.set_eye_color(DEFAULT_EYE_COLOR)
+        robot.behavior.set_cube_lights(DEFAULT_CUBE_LIGHT_COLOR)
+        robot.behavior.drive_off_charger()
 
-    def __init__(self, robot):
-        self.robot = robot
+        detector = EmotionDetector(robot)
+        reaction = EmotionReaction(robot)
 
-    def say(self, text, duration_scalar=1.0):
-        """
-        A method that makes Vector say a given text with optional duration scalar
-        """
-        duration_ms = int(duration_scalar * 200.0 * len(text))
-        self.robot.behavior.say_text(text, duration_scalar=duration_scalar)
-        return duration_ms
+        def on_object_observed(event_type, event):
+            emotion = detector.get_emotion(event.obj)
+            print(f"Detected emotion: {emotion}")
+            reaction.react(emotion)
 
-    def play_animation(self, anim_name, *, loops=1, use_lift_safe=True, ignore_lift_track=False):
-        """
-        A method that makes Vector play a given animation
-        """
-        anim = self.robot.anim.load_animation(anim_name)
-        return self.robot.anim.play_animation(
-            anim, loops=loops, use_lift_safe=use_lift_safe, ignore_lift_track=
+        robot.events.subscribe(on_object_observed, events.Events.object_observed)
+
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            pass
+
+
+if __name__ == "__main__":
+    main()
